@@ -4,13 +4,13 @@ import { createConfigSchematics } from "@lmstudio/sdk";
  * Plugin configuration options
  */
 export const configSchematics = createConfigSchematics()
-  .field("questionCount", "numeric", {
-    displayName: "Number of Questions",
-    hint: "How many quiz questions to generate from the content",
+  .field("questionsPerChunk", "numeric", {
+    displayName: "Questions per Chunk",
+    hint: "Number of questions to generate from each document chunk",
     min: 1,
-    max: 50,
+    max: 10,
     int: true,
-  }, 10)
+  }, 2)
   .field("difficulty", "select", {
     displayName: "Difficulty Level",
     hint: "Difficulty level of generated questions",
@@ -20,8 +20,13 @@ export const configSchematics = createConfigSchematics()
       { value: "hard", displayName: "Hard" },
     ],
   }, "medium")
-  .field("autoOpenQuiz", "boolean", {
-    displayName: "Auto-open Quiz",
-    hint: "Automatically open the quiz in browser after generation",
+  .field("quizOutputDir", "string", {
+    displayName: "Quiz Output Directory",
+    hint: "Default directory for storing processed documents and quizzes",
+    placeholder: "~/lmstudio-quizzes",
+  }, "")
+  .field("autoOpenViewer", "boolean", {
+    displayName: "Auto-open Quiz Viewer",
+    hint: "Automatically open the quiz viewer after generating a quiz",
   }, true)
   .build();

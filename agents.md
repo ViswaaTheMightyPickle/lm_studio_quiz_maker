@@ -1,164 +1,294 @@
-# LM Studio Quiz Maker Plugin - Development Plan
+# LM Studio Quiz Maker Plugin - Architecture
 
 ## Overview
 
-This is an **LM Studio Plugin** that provides tools for generating quizzes from attached files using local LLMs.
+RAG-inspired quiz generation plugin for LM Studio that processes documents, chunks them, and generates quizzes through multi-pass LLM calls.
 
 ---
 
-## Plugin Architecture
+## Workflow Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    LM Studio Application                     │
-├─────────────────────────────────────────────────────────────┤
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │              Quiz Maker Plugin                        │   │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌────────────┐  │   │
-│  │  │     File     │  │     Quiz     │  │   Quiz     │  │   │
-│  │  │  Extractor   │  │  Generator   │  │  Viewer    │  │   │
-│  │  └──────────────┘  └──────────────┘  └────────────┘  │   │
-│  │         │                 │                │          │   │
-│  │         ▼                 ▼                ▼          │   │
-│  │  ┌──────────────────────────────────────────────┐    │   │
-│  │  │           Tools Provider                      │    │   │
-│  │  │  • generate_quiz_from_file                    │    │   │
-│  │  │  • create_quiz_json                           │    │   │
-│  │  │  • open_quiz_viewer                           │    │   │
-│  │  └──────────────────────────────────────────────┘    │   │
-│  └──────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         LM Studio Quiz Maker Flow                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────┐                                                            │
+│  │   User       │                                                            │
+│  │   attaches   │                                                            │
+│  │   document   │                                                            │
+│  └──────┬───────┘                                                            │
+│         │                                                                    │
+│         ▼                                                                    │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │  1. process_document_for_quiz                                          │ │
+│  │     • Read file (PDF/DOCX/TXT/MD)                                      │ │
+│  │     • Convert to markdown                                              │ │
+│  │     • Split into chunks (~2500 chars)                                  │ │
+│  │     • Store in ~/lmstudio-quizzes/{doc_name}/                          │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│         │                                                                    │
+│         ▼                                                                    │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │  2. generate_quiz_from_chunks                                          │ │
+│  │     • For each chunk:                                                  │ │
+│  │       - Create quiz generation prompt                                  │ │
+│  │       - LLM generates 2-3 questions                                    │ │
+│  │       - Parse JSON response                                            │ │
+│  │     • Avoids context limits with multi-pass                            │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│         │                                                                    │
+│         ▼                                                                    │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │  3. finalize_quiz                                                      │ │
+│  │     • Combine all questions from all chunks                            │ │
+│  │     • Validate structure (4 options, 1 correct)                        │ │
+│  │     • Save to quiz.json                                                │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│         │                                                                    │
+│         ▼                                                                    │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │  4. open_quiz_viewer                                                   │ │
+│  │     • Start HTTP server (port 3456)                                    │ │
+│  │     • Serve quiz selection UI                                          │ │
+│  │     • User selects quiz → takes quiz → sees results                    │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Files
+## File Structure
 
-### `manifest.json`
-Plugin metadata for LM Studio Hub:
-```json
+```
+src/
+├── index.ts                 # Plugin entry point
+├── configSchematics.ts      # Configuration schema
+├── toolsProvider.ts         # 5 tools registration
+├── document-processor.ts    # File conversion & chunking
+├── quiz-workflow.ts         # Multi-pass quiz generation
+├── quiz-generator.ts        # Quiz types & utilities
+├── quiz-server.ts           # HTTP server for quiz viewer
+└── quiz-viewer.html         # Web UI for taking quizzes
+```
+
+---
+
+## Tools
+
+### 1. process_document_for_quiz
+
+**Purpose:** Convert document to markdown and chunk it
+
+**Parameters:**
+- `filePath` (string): Absolute path to document
+- `outputDir` (optional string): Output directory
+
+**Returns:**
+```typescript
 {
-  "type": "plugin",
-  "runner": "node",
-  "owner": "ViswaaTheMightyPickle",
-  "name": "quiz-maker",
-  "revision": 1
+  success: boolean;
+  fileName: string;
+  baseName: string;
+  markdownPath: string;
+  chunksPath: string;
+  totalChunks: number;
+  message: string;
 }
 ```
 
-### `src/index.ts`
-Plugin entry point - registers config and tools provider.
+### 2. generate_quiz_from_chunks
 
-### `src/configSchematics.ts`
-Defines configurable options:
-- `questionCount`: Number of questions (1-50)
-- `difficulty`: easy/medium/hard
-- `autoOpenQuiz`: Auto-open browser after generation
+**Purpose:** Generate questions from each chunk
 
-### `src/toolsProvider.ts`
-Exports three tools:
+**Parameters:**
+- `documentName` (string): Processed document name
+- `questionsPerChunk` (number): 1-10 questions per chunk
+- `difficulty` (enum): easy/medium/hard
+- `outputDir` (optional string): Document directory
 
-1. **`generate_quiz_from_file`**
-   - Extracts text from PDF/DOCX/TXT/MD
-   - Returns content + instructions for LLM to generate questions
-   - Parameters: filePath, questionCount, difficulty
+**Returns:**
+```typescript
+{
+  success: boolean;
+  totalChunks: number;
+  questionsToGenerate: number;
+  instructions: string;
+}
+```
 
-2. **`create_quiz_json`**
-   - Validates and saves quiz to quiz.json
-   - Ensures 4 options per question
-   - Parameters: quizData, autoOpen
+### 3. finalize_quiz
 
-3. **`open_quiz_viewer`**
-   - Opens quiz.html in browser
-   - Provides interactive quiz interface
-   - Parameters: quizPath (optional)
+**Purpose:** Combine questions into final quiz JSON
+
+**Parameters:**
+- `documentName` (string): Document name
+- `allQuestions` (array): All generated questions
+- `outputDir` (optional string): Output directory
+
+**Returns:**
+```typescript
+{
+  success: boolean;
+  quizPath: string;
+  questionCount: number;
+}
+```
+
+### 4. open_quiz_viewer
+
+**Purpose:** Start quiz viewer server
+
+**Parameters:**
+- `quizDir` (optional string): Quiz directory
+
+**Returns:**
+```typescript
+{
+  success: boolean;
+  viewerUrl: string;  // http://localhost:3456
+  quizDir: string;
+}
+```
+
+### 5. list_available_quizzes
+
+**Purpose:** List all quizzes in directory
+
+**Parameters:**
+- `quizDir` (optional string): Directory to search
 
 ---
 
-## Tool Flow
+## Data Structures
 
-```
-User attaches file
-       │
-       ▼
-┌─────────────────┐
-│ generate_quiz_  │
-│ from_file       │
-└────────┬────────┘
-         │
-         ▼
-  Extract text from file
-         │
-         ▼
-  Return content + instructions
-         │
-         ▼
-  LLM generates questions as JSON
-         │
-         ▼
-┌─────────────────┐
-│ create_quiz_json│
-└────────┬────────┘
-         │
-         ▼
-  Validate & save quiz.json
-         │
-         ▼
-┌─────────────────┐
-│ open_quiz_viewer│
-└────────┬────────┘
-         │
-         ▼
-  Open browser with quiz UI
+### ProcessedDocument
+
+```typescript
+{
+  originalPath: string;
+  fileName: string;
+  baseName: string;
+  markdownPath: string;
+  chunksPath: string;
+  totalChunks: number;
+}
 ```
 
----
+### QuizQuestion
 
-## Quiz JSON Schema
+```typescript
+{
+  id: number;
+  question: string;
+  options: Array<{ id: string; text: string }>;
+  correctAnswer: string;  // "a", "b", "c", or "d"
+  sourceChunk?: number;
+}
+```
+
+### Quiz
 
 ```typescript
 {
   title: string;
+  sourceDocument: string;
   sourceFile: string;
   totalQuestions: number;
-  questions: Array<{
-    id: number;
-    question: string;
-    options: Array<{ id: string; text: string }>;
-    correctAnswer: string; // "a", "b", "c", or "d"
-  }>;
+  questions: QuizQuestion[];
+  createdAt: string;  // ISO timestamp
 }
 ```
 
 ---
 
-## Development Commands
+## Chunking Strategy
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Watch mode for development (links to LM Studio) |
-| `npm run build` | Compile TypeScript to dist/ |
-| `npm run push` | Push plugin to LM Studio Hub |
+Documents are split into chunks of ~2500 characters:
+
+1. Split on section boundaries (`## ` headings)
+2. Merge sections until approaching max size
+3. Further split oversized sections by paragraphs
+4. Each chunk saved as `chunk_NNN.md` with frontmatter
+
+```markdown
+---
+chunk: 1
+total: 8
+---
+
+Chunk content here...
+```
 
 ---
 
-## Publishing to LM Studio Hub
+## Quiz Viewer Server
 
-1. Build the plugin: `npm run build`
-2. Ensure manifest.json has correct owner/name/revision
-3. Authenticate with LM Studio Hub
-4. Run: `npm run push`
-5. Plugin will be available at: `https://lmstudio.ai/{owner}/{name}`
+**Port:** 3456
+
+### Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Serve quiz viewer HTML |
+| `/api/quizzes` | GET | List available quizzes |
+| `/api/quiz?path=...` | GET | Load specific quiz |
+
+### Quiz Viewer Features
+
+- Directory selection UI
+- Quiz card grid with metadata
+- One-question-at-a-time display
+- Progress bar
+- Answer selection with highlighting
+- Submit with confirmation
+- Score display with percentage
+- Full review with correct answers
+
+---
+
+## Configuration
+
+```typescript
+{
+  questionsPerChunk: number;  // 1-10, default: 2
+  difficulty: "easy" | "medium" | "hard";  // default: medium
+  quizOutputDir: string;  // default: "" (uses ~/lmstudio-quizzes)
+  autoOpenViewer: boolean;  // default: true
+}
+```
+
+---
+
+## Error Handling
+
+All tools return structured error responses:
+
+```typescript
+{
+  success: false;
+  error: string;  // Human-readable error message
+}
+```
+
+Common errors:
+- File not found
+- Unsupported file type
+- Empty document
+- No chunks found
+- Invalid quiz data
+- Server already running
 
 ---
 
 ## Future Enhancements
 
-- [ ] Add thumbnail.png for plugin gallery
-- [ ] Support for image-based questions
-- [ ] Quiz difficulty adaptation based on user performance
-- [ ] Export results to CSV/PDF
-- [ ] Multiple quiz templates
-- [ ] Timer mode for quizzes
-- [ ] Shuffle questions/options
-- [ ] Category/tag support for questions
+- [ ] Image support in chunks
+- [ ] Table extraction from PDFs
+- [ ] Question difficulty auto-adjustment
+- [ ] Quiz export (PDF, Anki, CSV)
+- [ ] Spaced repetition integration
+- [ ] Multi-language support
+- [ ] Question type variations (T/F, matching)
+- [ ] Quiz sharing/collaboration

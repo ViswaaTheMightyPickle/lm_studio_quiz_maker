@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quiz Maker - Select Quiz</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      padding: 30px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 1.8rem;
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 25px;
+    }
+    .directory-selector {
+      background: #f8f9fa;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 25px;
+    }
+    .directory-selector label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 10px;
+      color: #333;
+    }
+    .directory-input {
+      display: flex;
+      gap: 10px;
+    }
+    .directory-input input {
+      flex: 1;
+      padding: 12px 15px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 1rem;
+    }
+    .directory-input input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .btn-primary {
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      color: white;
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+    }
+    .btn-secondary {
+      background: #e0e0e0;
+      color: #333;
+    }
+    .btn-secondary:hover {
+      background: #d0d0d0;
+    }
+    .quiz-list {
+      display: grid;
+      gap: 15px;
+      margin-top: 20px;
+    }
+    .quiz-card {
+      background: #f8f9fa;
+      border: 2px solid #e0e0e0;
+      border-radius: 12px;
+      padding: 20px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .quiz-card:hover {
+      border-color: #667eea;
+      background: #f0f0ff;
+      transform: translateY(-2px);
+    }
+    .quiz-card h3 {
+      color: #333;
+      margin-bottom: 8px;
+    }
+    .quiz-card .meta {
+      color: #666;
+      font-size: 0.9rem;
+    }
+    .quiz-card .questions {
+      display: inline-block;
+      background: #667eea;
+      color: white;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      margin-top: 10px;
+    }
+    .hidden { display: none; }
+    
+    /* Quiz taking styles */
+    .progress {
+      background: #e0e0e0;
+      border-radius: 8px;
+      height: 8px;
+      margin-bottom: 25px;
+      overflow: hidden;
+    }
+    .progress-bar {
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      height: 100%;
+      transition: width 0.3s ease;
+    }
+    .question-container { display: none; }
+    .question-container.active { display: block; }
+    .question-number {
+      color: #667eea;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    .question-text {
+      font-size: 1.2rem;
+      color: #333;
+      margin-bottom: 25px;
+      line-height: 1.5;
+    }
+    .options { list-style: none; }
+    .option {
+      background: #f8f9fa;
+      border: 2px solid #e0e0e0;
+      border-radius: 10px;
+      padding: 15px 20px;
+      margin-bottom: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .option:hover {
+      border-color: #667eea;
+      background: #f0f0ff;
+    }
+    .option.selected {
+      border-color: #667eea;
+      background: #667eea;
+      color: white;
+    }
+    .nav-buttons {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 30px;
+      gap: 15px;
+    }
+    .results {
+      display: none;
+      text-align: center;
+    }
+    .results.active { display: block; }
+    .score-circle {
+      width: 180px;
+      height: 180px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 30px;
+      color: white;
+    }
+    .score-number {
+      font-size: 3rem;
+      font-weight: bold;
+    }
+    .score-label { font-size: 0.9rem; opacity: 0.9; }
+    .review {
+      text-align: left;
+      margin-top: 30px;
+    }
+    .review-item {
+      background: #f8f9fa;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 15px;
+    }
+    .review-item.correct { border-left: 4px solid #4caf50; }
+    .review-item.incorrect { border-left: 4px solid #f44336; }
+    .review-question {
+      font-weight: 600;
+      margin-bottom: 10px;
+      color: #333;
+    }
+    .review-answer {
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin: 5px 0;
+      font-size: 0.9rem;
+    }
+    .review-answer.correct { background: #e8f5e9; color: #2e7d32; }
+    .review-answer.incorrect { background: #ffebee; color: #c62828; }
+    .review-answer.selected { font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Directory Selection View -->
+    <div id="directory-view">
+      <h1>📚 Quiz Maker</h1>
+      <p class="subtitle">Select a quiz to take or enter a directory path</p>
+      
+      <div class="directory-selector">
+        <label for="directory-path">Quiz Directory Path:</label>
+        <div class="directory-input">
+          <input type="text" id="directory-path" placeholder="/path/to/quiz/directory">
+          <button class="btn btn-primary" onclick="loadQuizFromPath()">Load Quiz</button>
+        </div>
+      </div>
+      
+      <div class="directory-selector">
+        <label>Available Quizzes:</label>
+        <button class="btn btn-secondary" onclick="refreshQuizList()">🔄 Refresh</button>
+        <div class="quiz-list" id="quiz-list"></div>
+      </div>
+    </div>
+    
+    <!-- Quiz Taking View -->
+    <div id="quiz-view" class="hidden">
+      <h1 id="quiz-title">Loading...</h1>
+      <p class="meta" id="quiz-meta"></p>
+      <div class="progress"><div class="progress-bar" id="progress-bar"></div></div>
+      <div id="questions-container"></div>
+      <div class="nav-buttons" id="nav-buttons">
+        <button class="btn btn-secondary" id="btn-prev" onclick="navigate('prev')">← Previous</button>
+        <button class="btn btn-primary" id="btn-next" onclick="navigate('next')">Next →</button>
+      </div>
+    </div>
+    
+    <!-- Results View -->
+    <div class="results" id="results">
+      <div class="score-circle">
+        <span class="score-number" id="score-number">0%</span>
+        <span class="score-label" id="score-label">0 / 0</span>
+      </div>
+      <h2>Quiz Complete!</h2>
+      <p class="meta" id="results-message"></p>
+      <div class="review" id="review-container"></div>
+      <button class="btn btn-primary" onclick="location.reload()" style="margin-top: 20px;">Back to Quiz List</button>
+    </div>
+  </div>
+
+  <script>
+    let quizData = null;
+    let currentQuestion = 0;
+    let answers = [];
+    let quizDirectories = [];
+
+    // Load available quizzes on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      refreshQuizList();
+    });
+
+    async function refreshQuizList() {
+      const quizList = document.getElementById('quiz-list');
+      quizList.innerHTML = '<p>Loading...</p>';
+      
+      try {
+        const response = await fetch('/api/quizzes');
+        quizDirectories = await response.json();
+        
+        if (quizDirectories.length === 0) {
+          quizList.innerHTML = '<p style="color: #666;">No quizzes found. Generate a quiz first using LM Studio.</p>';
+          return;
+        }
+        
+        quizList.innerHTML = '';
+        for (const dir of quizDirectories) {
+          const card = document.createElement('div');
+          card.className = 'quiz-card';
+          card.innerHTML = `
+            <h3>📝 ${escapeHtml(dir.name)}</h3>
+            <p class="meta">${escapeHtml(dir.path)}</p>
+            <span class="questions">${dir.questionCount || '?'} questions</span>
+          `;
+          card.onclick = () => loadQuiz(dir.path);
+          quizList.appendChild(card);
+        }
+      } catch (error) {
+        quizList.innerHTML = '<p style="color: #f44336;">Failed to load quiz list. Make sure the quiz server is running.</p>';
+      }
+    }
+
+    async function loadQuizFromPath() {
+      const pathInput = document.getElementById('directory-path');
+      const quizPath = pathInput.value.trim();
+      if (quizPath) {
+        await loadQuiz(quizPath);
+      }
+    }
+
+    async function loadQuiz(quizPath) {
+      try {
+        const response = await fetch(`/api/quiz?path=${encodeURIComponent(quizPath)}`);
+        quizData = await response.json();
+        
+        if (!quizData.questions || quizData.questions.length === 0) {
+          alert('Invalid quiz data');
+          return;
+        }
+        
+        answers = new Array(quizData.questions.length).fill(null);
+        
+        document.getElementById('directory-view').classList.add('hidden');
+        document.getElementById('quiz-view').classList.remove('hidden');
+        
+        document.getElementById('quiz-title').textContent = quizData.title;
+        document.getElementById('quiz-meta').textContent = `Source: ${quizData.sourceDocument || quizData.sourceFile}`;
+        
+        renderQuestions();
+        updateButtons();
+        updateProgress();
+      } catch (error) {
+        alert('Failed to load quiz: ' + error.message);
+      }
+    }
+
+    function renderQuestions() {
+      const container = document.getElementById('questions-container');
+      container.innerHTML = quizData.questions.map((q, i) => `
+        <div class="question-container ${i === currentQuestion ? 'active' : ''}" data-index="${i}">
+          <div class="question-number">Question ${i + 1} of ${quizData.totalQuestions}</div>
+          <div class="question-text">${escapeHtml(q.question)}</div>
+          <ul class="options">
+            ${q.options.map(opt => `
+              <li class="option ${answers[i] === opt.id ? 'selected' : ''}" data-option="${opt.id}" onclick="selectOption(${i}, '${opt.id}')">
+                <label>
+                  <span class="option-letter">${opt.id.toUpperCase()}.</span>
+                  <span>${escapeHtml(opt.text)}</span>
+                </label>
+              </li>
+            `).join('')}
+          </ul>
+        </div>
+      `).join('');
+    }
+
+    function selectOption(questionIndex, optionId) {
+      answers[questionIndex] = optionId;
+      renderQuestions();
+      updateProgress();
+    }
+
+    function updateProgress() {
+      const answered = answers.filter(a => a !== null).length;
+      const pct = (answered / quizData.totalQuestions) * 100;
+      document.getElementById('progress-bar').style.width = pct + '%';
+    }
+
+    function updateButtons() {
+      document.getElementById('btn-prev').disabled = currentQuestion === 0;
+      const nextBtn = document.getElementById('btn-next');
+      if (currentQuestion === quizData.totalQuestions - 1) {
+        nextBtn.textContent = 'Submit Quiz';
+      } else {
+        nextBtn.textContent = 'Next →';
+      }
+    }
+
+    function navigate(direction) {
+      if (direction === 'next') {
+        if (currentQuestion < quizData.totalQuestions - 1) {
+          currentQuestion++;
+        } else {
+          submitQuiz();
+          return;
+        }
+      } else if (currentQuestion > 0) {
+        currentQuestion--;
+      }
+      renderQuestions();
+      updateButtons();
+    }
+
+    function submitQuiz() {
+      const unanswered = answers.filter(a => a === null).length;
+      if (unanswered > 0 && !confirm(`You have ${unanswered} unanswered question(s). Submit anyway?`)) {
+        return;
+      }
+
+      let correct = 0;
+      quizData.questions.forEach((q, i) => {
+        if (answers[i] === q.correctAnswer) correct++;
+      });
+
+      const percentage = Math.round((correct / quizData.totalQuestions) * 100);
+      document.getElementById('score-number').textContent = percentage + '%';
+      document.getElementById('score-label').textContent = `${correct} / ${quizData.totalQuestions}`;
+
+      const message = percentage >= 80 ? '🎉 Excellent work!' :
+                      percentage >= 60 ? '👍 Good effort!' :
+                      '📚 Keep studying!';
+      document.getElementById('results-message').textContent = message;
+
+      // Render review
+      const reviewContainer = document.getElementById('review-container');
+      reviewContainer.innerHTML = quizData.questions.map((q, i) => {
+        const isCorrect = answers[i] === q.correctAnswer;
+        const selectedOption = q.options.find(o => o.id === answers[i]);
+        const correctOption = q.options.find(o => o.id === q.correctAnswer);
+        return `
+          <div class="review-item ${isCorrect ? 'correct' : 'incorrect'}">
+            <div class="review-question">${i + 1}. ${escapeHtml(q.question)}</div>
+            ${selectedOption ? `
+              <div class="review-answer ${isCorrect ? 'correct' : 'incorrect'} selected">
+                Your answer: ${selectedOption.id.toUpperCase()}. ${escapeHtml(selectedOption.text)}
+              </div>
+            `: '<div class="review-answer incorrect">No answer selected</div>'}
+            ${!isCorrect ? `
+              <div class="review-answer correct">
+                Correct answer: ${correctOption.id.toUpperCase()}. ${escapeHtml(correctOption.text)}
+              </div>
+            `: ''}
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('quiz-view').classList.add('hidden');
+      document.getElementById('nav-buttons').classList.add('hidden');
+      document.getElementById('results').classList.add('active');
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>
