@@ -1,19 +1,16 @@
 {
   "compilerOptions": {
-    "target": "ES2021",
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
-    "lib": ["ES2021"],
-    "outDir": "./dist",
-    "rootDir": "./src",
     "strict": true,
+    "module": "CommonJS",
+    "target": "ES2021",
+    "declaration": true,
+    "noImplicitOverride": true,
+    "sourceMap": true,
+    "declarationMap": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true
+    "rootDir": "./src",
+    "outDir": "./dist"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

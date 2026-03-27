@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "LM Studio plugin that generates quizzes from attached files",
   "main": "dist/index.js",
-  "type": "module",
   "scripts": {
     "dev": "lms dev",
     "build": "tsc",
