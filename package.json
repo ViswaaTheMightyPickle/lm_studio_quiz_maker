@@ -1,22 +1,31 @@
 {
-  "name": "quizzer",
-  "version": "0.0.0",
+  "name": "lm-studio-quiz-maker",
+  "version": "1.0.0",
   "description": "AI-powered quiz generator from attached files using LM Studio",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
+  "bin": {
+    "quiz-maker": "./dist/index.js",
+    "quiz-view": "./dist/viewer.js"
+  },
   "scripts": {
     "start": "tsc && node --enable-source-maps dist/index.js",
-    "build": "tsc"
+    "build": "tsc",
+    "generate": "tsc && node --enable-source-maps dist/index.js",
+    "view": "tsc && node --enable-source-maps dist/viewer.js",
+    "clean": "rm -rf dist"
   },
   "author": "ViswaaTheMightyPickle",
   "license": "MIT",
   "dependencies": {
-    "@lmstudio/sdk": "^1.5.0"
+    "@lmstudio/sdk": "^1.5.0",
+    "mammoth": "^1.12.0",
+    "pdf-parse": "^2.4.5"
   },
-  "gitHead": "d95ce2feb067b4eec446c673155631ee1734e982",
   "devDependencies": {
     "@types/node": "^22.13.1",
+    "@types/pdf-parse": "^1.1.5",
     "typescript": "^5.7.2"
   }
 }
