@@ -114,12 +114,12 @@ export async function toolsProvider(ctl: ToolsProviderController) {
   return [
     tool({
       name: "generate_quiz_from_file",
-      description: `Generate a multiple-choice quiz from an attached file (PDF, DOCX, TXT, or MD). 
+      description: `Generate a multiple-choice quiz from a file (PDF, DOCX, TXT, or MD). 
 Use this tool when the user wants to create a quiz from study materials, lecture notes, or documents.
 The tool will extract text from the file and help generate quiz questions with 4 answer options each.
 
 Parameters:
-- filePath: Path to the file to process
+- filePath: Full absolute path to the file (e.g., /home/user/Documents/file.pdf)
 - questionCount: Number of questions to generate (default: 10)
 - difficulty: Difficulty level - "easy", "medium", or "hard" (default: "medium")
 
@@ -135,9 +135,39 @@ Returns: A JSON quiz object with title and questions array.`,
           const actualQuestionCount = questionCount ?? config.get("questionCount");
           const actualDifficulty = difficulty ?? config.get("difficulty");
 
+          // Resolve the file path - handle both relative and absolute paths
+          let resolvedPath = filePath;
+          if (!path.isAbsolute(filePath)) {
+            // Try common locations for attached files
+            const homeDir = process.env.HOME || process.env.USERPROFILE || "";
+            const downloadDir = path.join(homeDir, "Downloads");
+            const desktopDir = path.join(homeDir, "Desktop");
+            const documentsDir = path.join(homeDir, "Documents");
+            
+            // Try to find the file in common locations
+            const searchPaths = [
+              process.cwd(),
+              downloadDir,
+              desktopDir,
+              documentsDir,
+              homeDir,
+            ];
+            
+            for (const searchPath of searchPaths) {
+              const candidate = path.join(searchPath, filePath);
+              try {
+                await readFile(candidate);
+                resolvedPath = candidate;
+                break;
+              } catch {
+                // File not found in this location, try next
+              }
+            }
+          }
+
           // Extract text from file
-          const content = await extractText(filePath);
-          const fileName = path.basename(filePath);
+          const content = await extractText(resolvedPath);
+          const fileName = path.basename(resolvedPath);
 
           // Return the extracted content and instructions for the LLM
           return {
@@ -145,15 +175,16 @@ Returns: A JSON quiz object with title and questions array.`,
             fileName,
             characterCount: content.length,
             extractedContent: content.substring(0, 5000), // Limit content for context
-            instructions: `I've extracted text from "${fileName}" (${content.length} characters). 
+            instructions: `I've extracted text from "${fileName}" (${content.length} characters).
 Based on this content, please generate ${actualQuestionCount} ${actualDifficulty} multiple-choice quiz questions.
 Each question should have 4 options (A, B, C, D) with exactly one correct answer.
 Format your response as a JSON object with "title" and "questions" array.`,
           };
         } catch (error) {
+          const errorMsg = (error as Error).message;
           return {
             success: false,
-            error: (error as Error).message,
+            error: `${errorMsg}\n\nTip: Provide the full absolute path to the file (e.g., /home/user/Documents/file.pdf)`,
           };
         }
       },

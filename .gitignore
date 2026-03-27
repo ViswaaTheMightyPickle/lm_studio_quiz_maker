@@ -1,5 +1,6 @@
 node_modules
 dist
+.lmstudio
 quiz.json
 *.pdf
 *.docx
