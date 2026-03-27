@@ -1,13 +1,9 @@
 import { ToolsProviderController, tool } from "@lmstudio/sdk";
 import { z } from "zod";
-import { readFile, writeFile, mkdir } from "fs/promises";
+import { readFile, writeFile, mkdir, readdir } from "fs/promises";
+import { PDFParse } from "pdf-parse";
+import mammoth from "mammoth";
 import path from "path";
-import { convertToMarkdown, listProcessedDocuments, readDocumentChunks } from "./document-processor.js";
-import { createQuizFromDirectory, generateQuizInChunks } from "./quiz-workflow.js";
-import { startQuizServer } from "./quiz-server.js";
-
-let quizServerStarted = false;
-let quizBaseDir = "";
 
 /**
  * Get the default quiz output directory
@@ -18,41 +14,128 @@ function getDefaultQuizDir(): string {
 }
 
 /**
- * Tools Provider for the Quiz Maker Plugin
+ * Extract text from a file
+ */
+async function extractText(filePath: string): Promise<string> {
+  const absolutePath = path.resolve(filePath);
+  const ext = path.extname(absolutePath).toLowerCase();
+
+  switch (ext) {
+    case ".txt":
+    case ".md":
+    case ".text":
+      return readFile(absolutePath, "utf-8");
+
+    case ".pdf": {
+      const pdfBuffer = await readFile(absolutePath);
+      const parser = new PDFParse({ data: pdfBuffer });
+      const result = await parser.getText();
+      return result.text;
+    }
+
+    case ".docx": {
+      const docxBuffer = await readFile(absolutePath);
+      const result = await mammoth.extractRawText({ buffer: docxBuffer });
+      return result.value;
+    }
+
+    default:
+      throw new Error(`Unsupported file type: ${ext}. Supported: .txt, .md, .pdf, .docx`);
+  }
+}
+
+/**
+ * Tools Provider for the Quiz Maker Plugin - Simplified Workflow
  */
 export async function toolsProvider(ctl: ToolsProviderController) {
   return [
     tool({
-      name: "process_document_for_quiz",
-      description: `Process a document (PDF, DOCX, TXT, MD) for quiz generation.
-This converts the file to markdown, chunks it for efficient processing, and prepares it for quiz generation.
-Use this as the first step when a user wants to create a quiz from a document.
+      name: "generate_quiz_from_file",
+      description: `Generate a complete quiz from a document file (PDF, DOCX, TXT, MD).
+This tool extracts text from the file and generates quiz questions using the LLM.
+The quiz is saved as a JSON file that can be used with the quiz viewer.
 
 Parameters:
 - filePath: Full absolute path to the document file
-- outputDir: Optional directory to store processed files (default: ~/lmstudio-quizzes)
+- questionCount: Total number of questions to generate (default: 10)
+- difficulty: Difficulty level - "easy", "medium", or "hard"
+- outputDir: Optional directory to store the quiz (default: ~/lmstudio-quizzes)
 
-Returns: Information about the processed document including chunk count.`,
+Returns: Path to the generated quiz JSON file.`,
       parameters: {
         filePath: z.string().describe("Full absolute path to the document file"),
-        outputDir: z.string().optional().describe("Output directory for processed files"),
+        questionCount: z.number().min(1).max(50).default(10).describe("Total number of questions to generate"),
+        difficulty: z.enum(["easy", "medium", "hard"]).default("medium").describe("Difficulty level"),
+        outputDir: z.string().optional().describe("Output directory for the quiz"),
       },
-      implementation: async ({ filePath, outputDir }) => {
+      implementation: async ({ filePath, questionCount, difficulty, outputDir }) => {
         try {
           const baseDir = outputDir || getDefaultQuizDir();
           await mkdir(baseDir, { recursive: true });
-          
-          const result = await convertToMarkdown(filePath, baseDir);
-          
+
+          // Extract text from file
+          const content = await extractText(filePath);
+          const fileName = path.basename(filePath);
+          const baseName = path.basename(fileName, path.extname(fileName));
+          const safeName = baseName.replace(/[^a-zA-Z0-9-_]/g, "_");
+
+          // Create document directory
+          const docDir = path.join(baseDir, safeName);
+          await mkdir(docDir, { recursive: true });
+
+          // Truncate content if too long (keep first 15000 chars for context)
+          const truncatedContent = content.length > 15000 
+            ? content.substring(0, 15000) + "\n\n[Content truncated...]"
+            : content;
+
+          // Create the quiz generation prompt
+          const difficultyPrompt = {
+            easy: "basic recall and comprehension",
+            medium: "application and analysis",
+            hard: "synthesis, evaluation, and critical thinking",
+          }[difficulty];
+
+          const prompt = `You are an expert quiz generator. Based on the following document content, create ${questionCount} multiple-choice questions at ${difficultyPrompt} level.
+
+RULES:
+1. Each question must have exactly 4 answer options (A, B, C, D)
+2. Only ONE option should be correct
+3. Make distractors plausible but clearly incorrect
+4. Questions should test understanding, not just recall
+5. Output MUST be valid JSON matching the schema below
+
+JSON Schema:
+{
+  "title": "Descriptive quiz title based on content",
+  "questions": [
+    {
+      "question": "Question text here?",
+      "options": [
+        {"id": "a", "text": "Option A text"},
+        {"id": "b", "text": "Option B text"},
+        {"id": "c", "text": "Option C text"},
+        {"id": "d", "text": "Option D text"}
+      ],
+      "correctAnswer": "a"
+    }
+  ]
+}
+
+DOCUMENT CONTENT:
+${truncatedContent}
+
+Output ONLY the JSON, no additional text or markdown formatting.`;
+
           return {
             success: true,
-            fileName: result.fileName,
-            baseName: result.baseName,
-            markdownPath: result.markdownPath,
-            chunksPath: result.chunksPath,
-            totalChunks: result.totalChunks,
-            message: `Processed "${result.fileName}" into ${result.totalChunks} chunks. Ready for quiz generation.`,
-            nextStep: "Call generate_quiz_from_chunks to create quiz questions from the processed chunks.",
+            fileName,
+            baseName: safeName,
+            characterCount: content.length,
+            contentForQuiz: truncatedContent,
+            prompt,
+            outputDir: docDir,
+            message: `Extracted ${content.length} characters from "${fileName}". Use the prompt above to generate ${questionCount} quiz questions at ${difficulty} difficulty.`,
+            instructions: "Please generate the quiz questions as a JSON object with 'title' and 'questions' array. Then call save_quiz to save it.",
           };
         } catch (error) {
           return {
@@ -64,74 +147,34 @@ Returns: Information about the processed document including chunk count.`,
     }),
 
     tool({
-      name: "generate_quiz_from_chunks",
-      description: `Generate quiz questions from processed document chunks.
-This uses multiple LLM calls to generate questions from each chunk, avoiding context limits.
-Call this after process_document_for_quiz.
+      name: "save_quiz",
+      description: `Save a generated quiz to a JSON file.
+Call this after the LLM has generated quiz questions.
 
 Parameters:
-- documentName: The base name of the processed document (e.g., "lecture_notes")
-- questionsPerChunk: Number of questions to generate per chunk (default: 2-3)
-- difficulty: Difficulty level - "easy", "medium", or "hard"
-- outputDir: Optional directory where processed files are stored`,
+- quizData: The quiz JSON object with title and questions
+- documentName: Name of the source document
+- outputDir: Optional directory to store the quiz`,
       parameters: {
-        documentName: z.string().describe("Base name of the processed document"),
-        questionsPerChunk: z.number().min(1).max(10).default(2).describe("Questions per chunk"),
-        difficulty: z.enum(["easy", "medium", "hard"]).default("medium").describe("Difficulty level"),
-        outputDir: z.string().optional().describe("Directory containing processed files"),
-      },
-      implementation: async ({ documentName, questionsPerChunk, difficulty, outputDir }) => {
-        try {
-          const baseDir = outputDir || getDefaultQuizDir();
-          const docDir = path.join(baseDir, documentName);
-          
-          // Generate quiz from chunks using multiple LLM calls
-          // This returns prompts for each chunk that the LLM should process
-          const result = await generateQuizInChunks(docDir, questionsPerChunk, difficulty);
-          
-          return {
-            success: true,
-            documentName,
-            totalChunks: result.totalChunks,
-            questionsToGenerate: result.totalChunks * questionsPerChunk,
-            message: `Ready to generate ${result.totalChunks * questionsPerChunk} questions from ${result.totalChunks} chunks.`,
-            instructions: result.instructions,
-            nextStep: "After the LLM generates questions for each chunk, call finalize_quiz to combine them.",
-          };
-        } catch (error) {
-          return {
-            success: false,
-            error: (error as Error).message,
-          };
-        }
-      },
-    }),
-
-    tool({
-      name: "finalize_quiz",
-      description: `Combine generated questions from all chunks into a final quiz JSON file.
-Call this after the LLM has generated questions for all chunks.
-
-Parameters:
-- documentName: The base name of the processed document
-- allQuestions: Array of all generated questions from all chunks
-- outputDir: Optional directory to store the final quiz`,
-      parameters: {
-        documentName: z.string().describe("Base name of the processed document"),
-        allQuestions: z.array(z.object({
-          question: z.string(),
-          options: z.array(z.object({ id: z.string(), text: z.string() })),
-          correctAnswer: z.string(),
-        })).describe("All generated questions from all chunks"),
+        quizData: z.object({
+          title: z.string(),
+          questions: z.array(z.object({
+            question: z.string(),
+            options: z.array(z.object({ id: z.string(), text: z.string() })),
+            correctAnswer: z.string(),
+          })),
+        }).describe("The quiz data to save"),
+        documentName: z.string().describe("Name of the source document"),
         outputDir: z.string().optional().describe("Output directory for the quiz"),
       },
-      implementation: async ({ documentName, allQuestions, outputDir }) => {
+      implementation: async ({ quizData, documentName, outputDir }) => {
         try {
           const baseDir = outputDir || getDefaultQuizDir();
           const docDir = path.join(baseDir, documentName);
-          
-          // Add id to each question
-          const questionsWithId = allQuestions.map((q, idx) => ({
+          await mkdir(docDir, { recursive: true });
+
+          // Validate and transform questions
+          const questions = quizData.questions.map((q, idx) => ({
             id: idx + 1,
             question: q.question,
             options: q.options.slice(0, 4).map((opt, i) => ({
@@ -142,13 +185,23 @@ Parameters:
               ? q.correctAnswer.toLowerCase()
               : "a",
           }));
-          
-          const quizPath = await createQuizFromDirectory(questionsWithId, docDir, documentName);
-          
+
+          const quiz = {
+            title: quizData.title || `Quiz: ${documentName}`,
+            sourceDocument: documentName,
+            sourceFile: documentName,
+            totalQuestions: questions.length,
+            questions,
+            createdAt: new Date().toISOString(),
+          };
+
+          const quizPath = path.join(docDir, "quiz.json");
+          await writeFile(quizPath, JSON.stringify(quiz, null, 2));
+
           return {
             success: true,
             quizPath,
-            questionCount: allQuestions.length,
+            questionCount: questions.length,
             message: `Quiz saved to ${quizPath}`,
             nextStep: "Call open_quiz_viewer to launch the quiz in the browser.",
           };
@@ -165,9 +218,11 @@ Parameters:
       name: "open_quiz_viewer",
       description: `Start the quiz viewer server and open it in the browser.
 The quiz viewer allows users to:
-- Select from available quizzes
-- Take quizzes with a clean interface
+- Browse all available quizzes
+- Select and take quizzes
 - See results and review answers
+
+The server runs on http://localhost:3456
 
 Parameters:
 - quizDir: Optional directory containing quizzes (default: ~/lmstudio-quizzes)`,
@@ -177,17 +232,14 @@ Parameters:
       implementation: async ({ quizDir }) => {
         try {
           const baseDir = quizDir || getDefaultQuizDir();
-          quizBaseDir = baseDir;
-          
-          // Start the server if not already running
-          if (!quizServerStarted) {
-            await startQuizServer(baseDir);
-            quizServerStarted = true;
-          }
-          
+
+          // Import and start the server
+          const { startQuizServer } = await import("./quiz-server.js");
+          await startQuizServer(baseDir);
+
           return {
             success: true,
-            viewerUrl: `http://localhost:3456`,
+            viewerUrl: "http://localhost:3456",
             quizDir: baseDir,
             message: `Quiz viewer is running at http://localhost:3456`,
             instructions: "Open the URL in your browser to select and take quizzes.",
@@ -204,7 +256,6 @@ Parameters:
     tool({
       name: "list_available_quizzes",
       description: `List all available quizzes in the quiz directory.
-Use this to show the user what quizzes they have already generated.
 
 Parameters:
 - quizDir: Optional directory to search for quizzes`,
@@ -215,7 +266,7 @@ Parameters:
         try {
           const baseDir = quizDir || getDefaultQuizDir();
           const { listQuizDirectories, loadQuizFromDirectory } = await import("./quiz-generator.js");
-          
+
           const dirs = await listQuizDirectories(baseDir);
           const quizzes = await Promise.all(
             dirs.map(async (dir) => {
@@ -229,7 +280,7 @@ Parameters:
               };
             })
           );
-          
+
           return {
             success: true,
             quizDir: baseDir,
