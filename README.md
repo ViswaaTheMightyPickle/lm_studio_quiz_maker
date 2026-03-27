@@ -1,147 +1,141 @@
-# LM Studio Quiz Maker
+# LM Studio Quiz Maker Plugin
 
-🤖 AI-powered quiz generator that creates multiple-choice quizzes from your study materials using LM Studio.
+🤖 An LM Studio plugin that generates multiple-choice quizzes from your study materials.
 
 ## Features
 
-- 📄 **Multiple File Formats**: Support for PDF, DOCX, TXT, and MD files
-- 🧠 **AI-Generated Questions**: Uses LM Studio to create intelligent quiz questions
-- ✅ **4-Option Multiple Choice**: Each question has 4 answers with 1 correct option
-- 🌐 **Browser-Based Quiz UI**: Clean, interactive interface for taking quizzes
-- 📊 **Instant Results**: Get your score and review answers immediately
-
-## Prerequisites
-
-1. **Node.js** (v18 or higher)
-2. **LM Studio** - Download from [lmstudio.ai](https://lmstudio.ai/)
-3. **LM Studio Local Server** must be running
+- 📄 **File Support**: Process PDF, DOCX, TXT, and MD files
+- 🧠 **AI-Powered**: Uses your local LLM to generate intelligent questions
+- ✅ **4-Option Questions**: Each question has 4 answers with 1 correct option
+- ⚙️ **Configurable**: Set question count and difficulty level
+- 🌐 **Quiz Viewer**: Built-in HTML viewer for taking quizzes
 
 ## Installation
 
+### Option 1: From LM Studio Hub (Recommended)
+
+1. Open LM Studio
+2. Go to **Discover** → **Plugins**
+3. Search for "quiz-maker"
+4. Click **Install**
+
+### Option 2: Local Development
+
 ```bash
+# Clone the repository
+git clone https://github.com/ViswaaTheMightyPickle/lm_studio_quiz_maker.git
+cd lm_studio_quiz_maker
+
+# Install dependencies
 npm install
+
+# Build the plugin
+npm run build
+
+# Link to LM Studio for development
+npm run dev
 ```
 
 ## Usage
 
-### 1. Start LM Studio Server
+### In LM Studio Chat
 
-```bash
-lms server start
+1. **Attach a file** (PDF, DOCX, TXT, or MD) to your chat
+2. **Ask the AI** to generate a quiz, e.g.:
+   - "Generate a quiz from this file"
+   - "Create 10 medium difficulty questions from my notes"
+   - "Make a hard quiz about this content"
+
+3. The AI will use the `generate_quiz_from_file` tool to:
+   - Extract text from your file
+   - Generate quiz questions based on the content
+
+4. After questions are generated, the AI can use `create_quiz_json` to save them
+
+5. Use `open_quiz_viewer` to take the quiz in your browser
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `generate_quiz_from_file` | Extract text and generate quiz questions from a file |
+| `create_quiz_json` | Save generated quiz to JSON file |
+| `open_quiz_viewer` | Open the interactive quiz viewer in browser |
+
+### Configuration
+
+Configure the plugin in LM Studio's plugin settings:
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `questionCount` | number | 10 | Number of questions to generate (1-50) |
+| `difficulty` | string | "medium" | Question difficulty: easy, medium, hard |
+| `autoOpenQuiz` | boolean | true | Auto-open quiz viewer after generation |
+
+## Quiz Viewer
+
+The quiz viewer provides:
+
+- 📊 **Progress Bar**: Track how many questions you've answered
+- ⬅️➡️ **Navigation**: Move between questions
+- 🎯 **Answer Selection**: Click to select from 4 options
+- 📝 **Review**: See all questions with correct answers highlighted
+- 🏆 **Score Display**: Get your percentage and total score
+
+## Example Workflow
+
 ```
+User: [attaches lecture.pdf] Can you make a quiz from this?
 
-Make sure you have a model loaded in LM Studio.
+AI: I'll generate a quiz from lecture.pdf using the generate_quiz_from_file tool.
+    [Tool call: extract text, generate questions]
+    
+AI: I've created 10 medium-difficulty questions about the lecture content.
+    Would you like me to save this as a quiz you can take?
 
-### 2. Generate a Quiz
+User: Yes please!
 
-```bash
-# Single file
-npm run generate -- ./study-notes.pdf
+AI: [Tool call: create_quiz_json to save quiz.json]
+    I've saved the quiz. Would you like to open it in the browser?
 
-# Multiple files
-npm run generate -- ./chapter1.pdf ./chapter2.pdf
+User: Open it!
 
-# Custom number of questions
-npm run generate -- ./notes.pdf -n 15
-
-# Text/markdown files
-npm run generate -- ./readings/*.txt
+AI: [Tool call: open_quiz_viewer]
+    The quiz is now open in your browser. Good luck!
 ```
-
-**Supported formats:** `.txt`, `.md`, `.pdf`, `.docx`
-
-### 3. Take the Quiz
-
-```bash
-npm run view
-```
-
-This opens the quiz in your default browser with:
-- One question at a time
-- Progress tracking
-- Submit button with confirmation
-- Score display with percentage
-- Full review of all questions
-
-## Output
-
-Generated quizzes are saved as `quiz.json`:
-
-```json
-{
-  "title": "Introduction to Machine Learning",
-  "sourceFile": "ml-notes.pdf",
-  "totalQuestions": 10,
-  "questions": [
-    {
-      "id": 1,
-      "question": "What is supervised learning?",
-      "options": [
-        {"id": "a", "text": "Learning with labeled data"},
-        {"id": "b", "text": "Learning without any data"},
-        {"id": "c", "text": "Learning with unlabeled data"},
-        {"id": "d", "text": "Learning from rewards"}
-      ],
-      "correctAnswer": "a"
-    }
-  ]
-}
-```
-
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `npm run generate -- <file>` | Generate quiz from file(s) |
-| `npm run view` | Open quiz in browser |
-| `npm run build` | Compile TypeScript |
-| `npm run clean` | Remove dist folder |
 
 ## Project Structure
 
 ```
 lm_studio_quiz_maker/
+├── manifest.json         # LM Studio plugin manifest
+├── package.json          # Node.js dependencies
+├── tsconfig.json         # TypeScript configuration
 ├── src/
-│   ├── index.ts           # Main CLI entry point
-│   ├── file-processor.ts  # File reading & text extraction
-│   ├── quiz-generator.ts  # AI quiz generation logic
-│   └── viewer.ts          # Browser quiz launcher
-├── dist/                  # Compiled JavaScript
-├── quiz.json              # Generated quiz output
-├── package.json
-└── agents.md              # Development plan
+│   ├── index.ts          # Plugin entry point
+│   ├── configSchematics.ts  # Configuration schema
+│   └── toolsProvider.ts  # Tool definitions
+└── dist/                 # Compiled JavaScript (generated)
 ```
 
-## Example Workflow
+## Development
 
 ```bash
-# Generate a 20-question quiz from your lecture notes
-npm run generate -- ./lecture-notes.pdf -n 20
+# Watch mode for development
+npm run dev
 
-# Take the quiz
-npm run view
+# Build for production
+npm run build
 
-# Generate another quiz from multiple sources
-npm run generate -- ./chapter1.pdf ./chapter2.pdf ./summary.md
-
-# View the new quiz
-npm run view
+# Push to LM Studio Hub (requires authentication)
+npm run push
 ```
 
-## Troubleshooting
+## Requirements
 
-**"No questions were generated"**
-- Ensure your file has sufficient text content
-- Try a different file format (TXT/MD work best)
-- Check that LM Studio has a model loaded
-
-**"Failed to parse AI response"**
-- The AI output wasn't valid JSON - try regenerating
-- Ensure your LM Studio model supports instruction following
-
-**"LM Studio connection failed"**
-- Run `lms server start` to start the local server
-- Check that the server is accessible
+- **LM Studio** v0.8.0 or higher
+- **Node.js** v18 or higher
+- A local LLM loaded in LM Studio (for quiz generation)
 
 ## License
 

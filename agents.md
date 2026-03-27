@@ -1,190 +1,164 @@
-# LM Studio Quiz Maker - Project Plan
+# LM Studio Quiz Maker Plugin - Development Plan
 
 ## Overview
-AI-powered quiz generator that accepts file attachments, uses LM Studio to generate multiple-choice questions, and provides a browser-based quiz interface.
+
+This is an **LM Studio Plugin** that provides tools for generating quizzes from attached files using local LLMs.
 
 ---
 
-## Architecture
+## Plugin Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     Quiz Maker System                        │
+│                    LM Studio Application                     │
 ├─────────────────────────────────────────────────────────────┤
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
-│  │   File       │    │   Quiz       │    │   Browser    │  │
-│  │   Processor  │───▶│  Generator   │───▶│   Quiz UI    │  │
-│  │  (index.ts)  │    │ (generator)  │    │   (HTML/JS)  │  │
-│  └──────────────┘    └──────────────┘    └──────────────┘  │
-│         │                   │                   │           │
-│         ▼                   ▼                   ▼           │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
-│  │  File Input  │    │  JSON Quiz   │    │   Results    │  │
-│  │  (PDF/TXT/   │    │   Output     │    │   Display    │  │
-│  │   MD/DOCX)   │    │   (quiz.json)│    │              │  │
-│  └──────────────┘    └──────────────┘    └──────────────┘  │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │              Quiz Maker Plugin                        │   │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌────────────┐  │   │
+│  │  │     File     │  │     Quiz     │  │   Quiz     │  │   │
+│  │  │  Extractor   │  │  Generator   │  │  Viewer    │  │   │
+│  │  └──────────────┘  └──────────────┘  └────────────┘  │   │
+│  │         │                 │                │          │   │
+│  │         ▼                 ▼                ▼          │   │
+│  │  ┌──────────────────────────────────────────────┐    │   │
+│  │  │           Tools Provider                      │    │   │
+│  │  │  • generate_quiz_from_file                    │    │   │
+│  │  │  • create_quiz_json                           │    │   │
+│  │  │  • open_quiz_viewer                           │    │   │
+│  │  └──────────────────────────────────────────────┘    │   │
+│  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Discrete Steps
+## Files
 
-### Step 1: Project Setup & Git Configuration
-- [x] Update LICENSE to MIT
-- [x] Update package.json with author info
-- [ ] Initialize git repository
-- [ ] Configure git user (ViswaaTheMightyPickle / thereddragonspeaks22919@protonmail.com)
-- [ ] Create initial commit
-- [ ] Create GitHub repo: `lm_studio_quiz_maker`
-- [ ] Push to remote
-
-### Step 2: File Processing Module (`src/file-processor.ts`)
-**Purpose:** Read and extract text from various file formats
-
-**Features:**
-- Accept file paths as command-line arguments
-- Support multiple formats: `.txt`, `.md`, `.pdf`, `.docx`
-- Extract plain text content for AI processing
-- Handle encoding issues gracefully
-
-**Dependencies to add:**
-- `pdf-parse` for PDF files
-- `mammoth` for DOCX files
-- `fs/promises` (built-in) for TXT/MD
-
-### Step 3: Quiz Generator Module (`src/quiz-generator.ts`)
-**Purpose:** Use LM Studio AI to generate quiz questions from text
-
-**Features:**
-- Connect to LM Studio local server
-- Send extracted text with structured prompt
-- Parse AI response into structured quiz format
-- Generate 4 answer options per question (1 correct, 3 distractors)
-- Output validated JSON structure
-
-**Quiz JSON Schema:**
+### `manifest.json`
+Plugin metadata for LM Studio Hub:
 ```json
 {
-  "title": "Quiz Title",
-  "sourceFile": "filename.pdf",
-  "questions": [
-    {
-      "id": 1,
-      "question": "Question text here?",
-      "options": [
-        { "id": "a", "text": "Option A" },
-        { "id": "b", "text": "Option B" },
-        { "id": "c", "text": "Option C" },
-        { "id": "d", "text": "Option D" }
-      ],
-      "correctAnswer": "a"
-    }
-  ]
+  "type": "plugin",
+  "runner": "node",
+  "owner": "ViswaaTheMightyPickle",
+  "name": "quiz-maker",
+  "revision": 1
 }
 ```
 
-### Step 4: CLI Interface (`src/index.ts`)
-**Purpose:** Main entry point orchestrating file processing and quiz generation
+### `src/index.ts`
+Plugin entry point - registers config and tools provider.
 
-**Features:**
-- Accept file arguments: `npm start -- path/to/file.pdf`
-- Process file through file-processor
-- Generate quiz via quiz-generator
-- Save output to `quiz.json`
-- Display progress and errors
+### `src/configSchematics.ts`
+Defines configurable options:
+- `questionCount`: Number of questions (1-50)
+- `difficulty`: easy/medium/hard
+- `autoOpenQuiz`: Auto-open browser after generation
 
-### Step 5: Browser Quiz UI (`dist/quiz.html`)
-**Purpose:** Interactive quiz interface for taking the generated quiz
+### `src/toolsProvider.ts`
+Exports three tools:
 
-**Features:**
-- Load `quiz.json` from same directory
-- Display one question at a time
-- Radio button selection for 4 options
-- Navigation: Previous/Next buttons
-- Progress indicator (e.g., "Question 3 of 10")
-- Submit button at end
-- Results screen showing:
-  - Score (X/Y correct)
-  - Percentage
-  - Review of all questions with correct answers highlighted
+1. **`generate_quiz_from_file`**
+   - Extracts text from PDF/DOCX/TXT/MD
+   - Returns content + instructions for LLM to generate questions
+   - Parameters: filePath, questionCount, difficulty
 
-**Tech Stack:**
-- Vanilla HTML/CSS/JavaScript (no build step needed)
-- Fetch API to load quiz.json
-- LocalStorage for answer persistence (optional)
+2. **`create_quiz_json`**
+   - Validates and saves quiz to quiz.json
+   - Ensures 4 options per question
+   - Parameters: quizData, autoOpen
 
-### Step 6: Quiz Viewer Launcher (`src/viewer.ts`)
-**Purpose:** Generate and open quiz HTML in browser
+3. **`open_quiz_viewer`**
+   - Opens quiz.html in browser
+   - Provides interactive quiz interface
+   - Parameters: quizPath (optional)
 
-**Features:**
-- Check if `quiz.json` exists
-- Copy/embed quiz data into HTML template
-- Launch default browser
-- Command: `npm run view`
+---
 
-### Step 7: Package.json Scripts
-Add new npm scripts:
-```json
+## Tool Flow
+
+```
+User attaches file
+       │
+       ▼
+┌─────────────────┐
+│ generate_quiz_  │
+│ from_file       │
+└────────┬────────┘
+         │
+         ▼
+  Extract text from file
+         │
+         ▼
+  Return content + instructions
+         │
+         ▼
+  LLM generates questions as JSON
+         │
+         ▼
+┌─────────────────┐
+│ create_quiz_json│
+└────────┬────────┘
+         │
+         ▼
+  Validate & save quiz.json
+         │
+         ▼
+┌─────────────────┐
+│ open_quiz_viewer│
+└────────┬────────┘
+         │
+         ▼
+  Open browser with quiz UI
+```
+
+---
+
+## Quiz JSON Schema
+
+```typescript
 {
-  "scripts": {
-    "start": "tsc && node --enable-source-maps dist/index.js",
-    "build": "tsc",
-    "generate": "tsc && node --enable-source-maps dist/index.js",
-    "view": "tsc && node --enable-source-maps dist/viewer.js",
-    "clean": "rm -rf dist"
-  }
+  title: string;
+  sourceFile: string;
+  totalQuestions: number;
+  questions: Array<{
+    id: number;
+    question: string;
+    options: Array<{ id: string; text: string }>;
+    correctAnswer: string; // "a", "b", "c", or "d"
+  }>;
 }
 ```
 
 ---
 
-## File Structure
+## Development Commands
 
-```
-quizzer/
-├── src/
-│   ├── index.ts           # Main CLI entry
-│   ├── file-processor.ts  # File reading/extraction
-│   ├── quiz-generator.ts  # AI quiz generation
-│   └── viewer.ts          # Browser launcher
-├── dist/
-│   ├── index.js
-│   ├── file-processor.js
-│   ├── quiz-generator.js
-│   ├── viewer.js
-│   └── quiz.html          # Generated quiz UI
-├── quiz.json              # Generated quiz output
-├── package.json
-├── tsconfig.json
-├── LICENSE
-├── README.md
-└── agents.md              # This file
-```
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Watch mode for development (links to LM Studio) |
+| `npm run build` | Compile TypeScript to dist/ |
+| `npm run push` | Push plugin to LM Studio Hub |
 
 ---
 
-## Usage Flow
+## Publishing to LM Studio Hub
 
-1. **Generate Quiz:**
-   ```bash
-   npm run generate -- ./study-materials.pdf
-   ```
-   → Creates `quiz.json`
-
-2. **Take Quiz:**
-   ```bash
-   npm run view
-   ```
-   → Opens browser with interactive quiz
+1. Build the plugin: `npm run build`
+2. Ensure manifest.json has correct owner/name/revision
+3. Authenticate with LM Studio Hub
+4. Run: `npm run push`
+5. Plugin will be available at: `https://lmstudio.ai/{owner}/{name}`
 
 ---
 
-## Future Enhancements (Post-MVP)
-- [ ] Custom number of questions
-- [ ] Difficulty level selection
-- [ ] Multiple file batch processing
-- [ ] Export results to CSV
-- [ ] Timer for quiz
+## Future Enhancements
+
+- [ ] Add thumbnail.png for plugin gallery
+- [ ] Support for image-based questions
+- [ ] Quiz difficulty adaptation based on user performance
+- [ ] Export results to CSV/PDF
+- [ ] Multiple quiz templates
+- [ ] Timer mode for quizzes
 - [ ] Shuffle questions/options
-- [ ] LMS integration (picklerick)
+- [ ] Category/tag support for questions

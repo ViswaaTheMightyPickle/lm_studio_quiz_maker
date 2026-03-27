@@ -3,3 +3,4 @@ dist
 quiz.json
 *.pdf
 *.docx
+.DS_Store
